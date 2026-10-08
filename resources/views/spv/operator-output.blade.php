@@ -10,10 +10,16 @@
                 <h2 class="text-xl font-bold text-slate-800">Pencatatan Hasil Output Individu / Operator</h2>
                 <p class="text-xs text-slate-500">SPV Line merekam pencapaian unit harian dan defect individu operator untuk penilaian kinerja.</p>
             </div>
-            <button type="button" id="load_operators" class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-xl shadow-sm transition text-xs">
-                <i class="fa-solid fa-arrows-rotate"></i>
-                <span>Muat Data Operator</span>
-            </button>
+            <div class="flex items-center gap-2">
+                <span class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-xl text-sm font-bold">
+                    <i class="fa-solid fa-industry"></i>
+                    {{ $line->name }}
+                </span>
+                <button type="button" id="load_operators" class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-xl shadow-sm transition text-xs">
+                    <i class="fa-solid fa-arrows-rotate"></i>
+                    <span>Muat Data Operator</span>
+                </button>
+            </div>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">

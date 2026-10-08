@@ -10,6 +10,10 @@
                 <h2 class="text-xl font-bold text-slate-800">Distribusi Tugas Proses ke Operator Line</h2>
                 <p class="text-xs text-slate-500">SPV Line membagikan tugas breakdown process kepada operator yang bertugas pada shift aktif.</p>
             </div>
+            <span class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-xl text-sm font-bold">
+                <i class="fa-solid fa-industry"></i>
+                {{ $line->name }}
+            </span>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">

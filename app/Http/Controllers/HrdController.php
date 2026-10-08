@@ -257,7 +257,7 @@ class HrdController extends Controller
      */
     public function usersIndex(Request $request)
     {
-        $query = User::query();
+        $query = User::with('assignedLine');
 
         if ($request->filled('search')) {
             $search = $request->search;
@@ -301,6 +301,9 @@ class HrdController extends Controller
             'manager' => 'Executive Manager',
         ];
 
+        // All production lines for SPV line assignment dropdown
+        $productionLines = ProductionLine::orderBy('name')->get();
+
         if ($request->ajax() || $request->wantsJson()) {
             return response()->json([
                 'users' => $users,
@@ -308,7 +311,7 @@ class HrdController extends Controller
             ]);
         }
 
-        return view('hrd.users', compact('users', 'stats', 'roles'));
+        return view('hrd.users', compact('users', 'stats', 'roles', 'productionLines'));
     }
 
     public function storeUser(Request $request)
@@ -320,7 +323,13 @@ class HrdController extends Controller
             'role' => 'required|in:ppic,ie,hrd,spv,admin_produksi,manager,admin_qc',
             'password' => 'required|string|min:6',
             'is_active' => 'nullable|boolean',
+            'assigned_line_id' => 'nullable|exists:production_lines,id',
         ]);
+
+        // Only SPV can have assigned_line_id; clear it for other roles
+        if ($validated['role'] !== 'spv') {
+            $validated['assigned_line_id'] = null;
+        }
 
         try {
             $validated['password'] = Hash::make($validated['password']);
@@ -355,7 +364,13 @@ class HrdController extends Controller
             'role' => 'required|in:ppic,ie,hrd,spv,admin_produksi,manager,admin_qc',
             'password' => 'nullable|string|min:6',
             'is_active' => 'nullable|boolean',
+            'assigned_line_id' => 'nullable|exists:production_lines,id',
         ]);
+
+        // Only SPV can have assigned_line_id; clear it for other roles
+        if ($validated['role'] !== 'spv') {
+            $validated['assigned_line_id'] = null;
+        }
 
         try {
             if (!empty($validated['password'])) {

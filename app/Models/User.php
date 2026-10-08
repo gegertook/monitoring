@@ -26,6 +26,7 @@ class User extends Authenticatable
         'password',
         'role',
         'is_active',
+        'assigned_line_id',
     ];
 
     /**
@@ -47,6 +48,11 @@ class User extends Authenticatable
         'password' => 'hashed',
         'is_active' => 'boolean',
     ];
+
+    public function assignedLine()
+    {
+        return $this->belongsTo(ProductionLine::class, 'assigned_line_id');
+    }
 
     public function styleOrders()
     {

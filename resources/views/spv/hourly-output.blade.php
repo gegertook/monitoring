@@ -10,24 +10,22 @@
                 <h2 class="text-xl font-bold text-slate-800">Pencatatan Output Line Per Jam & Analisis Defect</h2>
                 <p class="text-xs text-slate-500">SPV Line mencatat output barang bagus dan defect rate setiap jam kerja (8 Jam).</p>
             </div>
-            <button type="button" id="load_data_btn" class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-xl shadow-sm transition text-xs">
-                <i class="fa-solid fa-arrows-rotate"></i>
-                <span>Muat Data Output</span>
-            </button>
+            <div class="flex items-center gap-2">
+                {{-- Fixed line badge --}}
+                <span class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-xl text-sm font-bold">
+                    <i class="fa-solid fa-industry"></i>
+                    {{ $line->name }}
+                </span>
+                <button type="button" id="load_data_btn" class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-xl shadow-sm transition text-xs">
+                    <i class="fa-solid fa-arrows-rotate"></i>
+                    <span>Muat Data</span>
+                </button>
+            </div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-                <label class="block text-xs font-bold uppercase text-slate-600 mb-1.5">Production Line</label>
-                <select id="line_id" class="w-full py-2.5 px-3 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white">
-                    <option value="">-- Pilih Production Line --</option>
-                    @foreach($lines as $line)
-                        <option value="{{ $line->id }}" {{ $loop->first ? 'selected' : '' }}>{{ $line->name }} (Kapasitas: {{ $line->capacity }})</option>
-                    @endforeach
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs font-bold uppercase text-slate-600 mb-1.5">Style Order Aktif</label>
+                <label class="block text-xs font-bold uppercase text-slate-600 mb-1.5">Style Order Aktif di {{ $line->name }}</label>
                 <select id="style_order_id" class="w-full py-2.5 px-3 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white">
                     <option value="">-- Pilih Style Order --</option>
                     @foreach($styleOrders as $order)
@@ -192,12 +190,11 @@
     }
 
     function loadHourlyData() {
-        let lineId = $('#line_id').val();
         let styleId = $('#style_order_id').val();
         let date = $('#production_date').val();
 
-        if(!lineId || !styleId) {
-            showNotification('warning', 'Pilih Production Line dan Style Order terlebih dahulu!');
+        if(!styleId) {
+            showNotification('warning', 'Pilih Style Order terlebih dahulu!');
             return;
         }
 
@@ -212,7 +209,6 @@
             url: "{{ route('spv.api.hourly-data') }}",
             type: "GET",
             data: {
-                production_line_id: lineId,
                 style_order_id: styleId,
                 date: date
             },
@@ -245,19 +241,18 @@
             loadHourlyData();
         });
 
-        $('#line_id, #style_order_id, #production_date').change(function() {
+        $('#style_order_id, #production_date').change(function() {
             loadHourlyData();
         });
 
         $('#hourly_output_form').submit(function(e) {
             e.preventDefault();
 
-            let lineId = $('#line_id').val();
             let styleId = $('#style_order_id').val();
             let date = $('#production_date').val();
 
-            if(!lineId || !styleId) {
-                showNotification('warning', 'Pilih Production Line dan Style Order!');
+            if(!styleId) {
+                showNotification('warning', 'Pilih Style Order!');
                 return;
             }
 
@@ -272,7 +267,7 @@
 
             Swal.fire({
                 title: 'Menyimpan Output...',
-                text: 'Menyimpan data 8 jam produksi ke database MySQL...',
+                text: 'Menyimpan data 8 jam produksi ke database...',
                 allowOutsideClick: false,
                 didOpen: () => Swal.showLoading()
             });
@@ -281,7 +276,6 @@
                 url: "{{ route('spv.hourly-output.store') }}",
                 type: "POST",
                 data: {
-                    production_line_id: lineId,
                     style_order_id: styleId,
                     production_date: date,
                     hours: hoursData
@@ -298,3 +292,4 @@
     });
 </script>
 @endsection
+

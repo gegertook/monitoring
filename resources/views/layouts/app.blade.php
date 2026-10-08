@@ -125,7 +125,14 @@
 
                         {{-- SPV Role --}}
                         @if($role === 'spv')
-                            <li class="pt-4 pb-1"><span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3.5">Supervisor Line</span></li>
+                            <li class="pt-4 pb-1">
+                                <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3.5">Supervisor Line</span>
+                                @if(auth()->user()->assignedLine)
+                                    <span class="block text-[10px] font-semibold text-indigo-400 px-3.5 mt-0.5"><i class="fa-solid fa-industry mr-1"></i>{{ auth()->user()->assignedLine->name }}</span>
+                                @else
+                                    <span class="block text-[10px] font-semibold text-rose-400 px-3.5 mt-0.5"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Belum ada line</span>
+                                @endif
+                            </li>
                             <li>
                                 <a href="{{ route('spv.task-assignment.index') }}" class="flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium {{ request()->routeIs('spv.task-assignment.*') ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white' }}">
                                     <i class="fa-solid fa-clipboard-list w-5 text-center"></i>

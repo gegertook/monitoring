@@ -101,6 +101,7 @@
                         <th class="py-3 px-4">Nama & NIK</th>
                         <th class="py-3 px-4">Email Login</th>
                         <th class="py-3 px-4">Hak Akses / Peran</th>
+                        <th class="py-3 px-4">Line Tugas (SPV)</th>
                         <th class="py-3 px-4">Status Akun</th>
                         <th class="py-3 px-4">Terdaftar</th>
                         <th class="py-3 px-4 text-center">Aksi Cepat</th>
@@ -151,6 +152,18 @@
                                     <span>{{ strtoupper(str_replace('_', ' ', $user->role)) }}</span>
                                 </span>
                             </td>
+                            <td class="py-3.5 px-4 text-xs font-semibold">
+                                @if($user->role === 'spv' && $user->assignedLine)
+                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                        <i class="fa-solid fa-industry text-[10px]"></i>
+                                        {{ $user->assignedLine->name }}
+                                    </span>
+                                @elseif($user->role === 'spv')
+                                    <span class="text-rose-500 italic">Belum Diplot</span>
+                                @else
+                                    <span class="text-slate-400">-</span>
+                                @endif
+                            </td>
                             <td class="py-3.5 px-4">
                                 <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold {{ $user->is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600' }}">
                                     <span class="w-1.5 h-1.5 rounded-full {{ $user->is_active ? 'bg-emerald-500' : 'bg-slate-400' }}"></span>
@@ -172,7 +185,7 @@
                                     @endif
 
                                     <!-- Edit Button -->
-                                    <button type="button" onclick="openEditUserModal({{ $user->id }}, '{{ $user->nik }}', '{{ $user->name }}', '{{ $user->email }}', '{{ $user->role }}', {{ $user->is_active ? 1 : 0 }})" 
+                                    <button type="button" onclick="openEditUserModal({{ $user->id }}, '{{ $user->nik }}', '{{ $user->name }}', '{{ $user->email }}', '{{ $user->role }}', {{ $user->is_active ? 1 : 0 }}, '{{ $user->assigned_line_id ?? '' }}')" 
                                         class="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-md transition" title="Edit Akun">
                                         <i class="fa-solid fa-pen-to-square"></i>
                                     </button>
@@ -189,7 +202,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="py-8 text-center text-slate-500">
+                            <td colspan="7" class="py-8 text-center text-slate-500">
                                 <i class="fa-solid fa-users-slash text-3xl text-slate-300 mb-2 block"></i>
                                 Tidak ada akun staff yang cocok dengan filter.
                             </td>
@@ -258,6 +271,17 @@
                 <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Password Awal</label>
                 <input type="password" name="password" id="add-password" required minlength="6" placeholder="Minimal 6 karakter" 
                     class="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-hidden">
+            </div>
+
+            <div id="add-line-container" class="hidden">
+                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Line Tugas (Khusus SPV)</label>
+                <select name="assigned_line_id" id="add-assigned-line" class="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-hidden bg-white">
+                    <option value="">-- Pilih Line --</option>
+                    @foreach($productionLines as $line)
+                        <option value="{{ $line->id }}">{{ $line->name }}</option>
+                    @endforeach
+                </select>
+                <p class="text-xs text-rose-500 mt-1 font-medium">*Wajib diisi jika peran yang dipilih adalah Supervisor (SPV)</p>
             </div>
 
             <div class="flex items-center gap-2 pt-1">
@@ -330,6 +354,17 @@
                     class="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-hidden">
             </div>
 
+            <div id="edit-line-container" class="hidden">
+                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Line Tugas (Khusus SPV)</label>
+                <select name="assigned_line_id" id="edit-assigned-line" class="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-hidden bg-white">
+                    <option value="">-- Pilih Line --</option>
+                    @foreach($productionLines as $line)
+                        <option value="{{ $line->id }}">{{ $line->name }}</option>
+                    @endforeach
+                </select>
+                <p class="text-xs text-rose-500 mt-1 font-medium">*Wajib diisi jika peran yang dipilih adalah Supervisor (SPV)</p>
+            </div>
+
             <div class="flex items-center gap-2 pt-1">
                 <input type="checkbox" name="is_active" id="edit-is-active" value="1" 
                     class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500">
@@ -375,17 +410,36 @@
         window.location.href = url.toString();
     }
 
+    // Toggle line selector visibility based on role
+    function toggleLineSelect(roleSelectId, containerId) {
+        const role = $(roleSelectId).val();
+        if (role === 'spv') {
+            $(containerId).removeClass('hidden');
+        } else {
+            $(containerId).addClass('hidden');
+        }
+    }
+
+    // Bind role change events
+    $('#add-role').on('change', function() {
+        toggleLineSelect('#add-role', '#add-line-container');
+    });
+    $('#edit-role').on('change', function() {
+        toggleLineSelect('#edit-role', '#edit-line-container');
+    });
+
     // Modal controls
     function openAddUserModal() {
         $('#addUserForm')[0].reset();
         $('#add-is-active').prop('checked', true);
+        $('#add-line-container').addClass('hidden');
         $('#addUserModal').removeClass('hidden');
     }
     function closeAddUserModal() {
         $('#addUserModal').addClass('hidden');
     }
 
-    function openEditUserModal(id, nik, name, email, role, isActive) {
+    function openEditUserModal(id, nik, name, email, role, isActive, assignedLineId) {
         $('#edit-user-id').val(id);
         $('#edit-nik').val(nik);
         $('#edit-name').val(name);
@@ -393,6 +447,8 @@
         $('#edit-role').val(role);
         $('#edit-password').val('');
         $('#edit-is-active').prop('checked', isActive == 1);
+        $('#edit-assigned-line').val(assignedLineId || '');
+        toggleLineSelect('#edit-role', '#edit-line-container');
         $('#editUserModal').removeClass('hidden');
     }
     function closeEditUserModal() {
@@ -411,6 +467,7 @@
             email: $('#add-email').val(),
             role: $('#add-role').val(),
             password: $('#add-password').val(),
+            assigned_line_id: $('#add-role').val() === 'spv' ? ($('#add-assigned-line').val() || null) : null,
             is_active: $('#add-is-active').is(':checked') ? 1 : 0,
             _token: '{{ csrf_token() }}'
         };
@@ -457,6 +514,7 @@
             email: $('#edit-email').val(),
             role: $('#edit-role').val(),
             password: $('#edit-password').val() || null,
+            assigned_line_id: $('#edit-role').val() === 'spv' ? ($('#edit-assigned-line').val() || null) : null,
             is_active: $('#edit-is-active').is(':checked') ? 1 : 0,
             _token: '{{ csrf_token() }}',
             _method: 'PUT'
