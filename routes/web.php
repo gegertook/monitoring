@@ -85,6 +85,7 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/operator-output', [SpvController::class, 'operatorOutput'])->name('operator-output.index');
         Route::post('/operator-output', [SpvController::class, 'storeOperatorOutput'])->name('operator-output.store');
         // AJAX
+        Route::get('/api/style-orders/{styleOrder}/processes', [SpvController::class, 'getStyleOrderProcesses'])->name('api.style-order-processes');
         Route::get('/api/line-operators', [SpvController::class, 'getLineOperators'])->name('api.line-operators');
         Route::get('/api/hourly-data', [SpvController::class, 'getHourlyData'])->name('api.hourly-data');
         Route::get('/api/operator-data', [SpvController::class, 'getOperatorData'])->name('api.operator-data');

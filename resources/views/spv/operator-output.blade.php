@@ -103,20 +103,50 @@
         $('#stat_avg_output').text(count > 0 ? (totalOutput / count).toFixed(1) : 0);
     }
 
+    function showTableMessage(message, isError) {
+        let td = $('<td>')
+            .attr('colspan', 5)
+            .addClass('text-center py-8 ' + (isError ? 'text-rose-500 font-semibold' : 'text-slate-400'))
+            .text(message);
+        $('#operator_table_body').empty().append($('<tr>').append(td));
+    }
+
+    function showTableLoading() {
+        let td = $('<td>').attr('colspan', 5).addClass('text-center py-8 text-slate-400');
+        td.append($('<i>').addClass('fa-solid fa-spinner fa-spin mr-1')).append(document.createTextNode(' Memuat data pengerjaan...'));
+        $('#operator_table_body').empty().append($('<tr>').append(td));
+    }
+
     function loadOperatorTable() {
         let styleId = $('#filter_style').val();
         let date = $('#filter_date').val();
 
-        if(!styleId) return;
+        if(!styleId) {
+            activeProcesses = [];
+            showTableMessage('Pilih style order terlebih dahulu.', false);
+            return;
+        }
 
-        $('#operator_table_body').html('<tr><td colspan="5" class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Memuat data pengerjaan...</td></tr>');
+        showTableLoading();
 
-        // Fetch processes for this style order first
-        $.get(`/ie/api/style-orders/${styleId}/processes`, function(processes) {
-            activeProcesses = processes;
+        // Fetch processes for this style order first (SPV endpoint, scoped to this line)
+        $.get(`/spv/api/style-orders/${styleId}/processes`)
+        .fail(function(xhr) {
+            let msg = xhr.responseJSON?.error || 'Gagal memuat data pengerjaan (HTTP ' + (xhr.status || '-') + ').';
+            showTableMessage(msg, true);
+            showNotification('error', msg);
+        })
+        .done(function(processes) {
+            activeProcesses = Array.isArray(processes) ? processes : [];
 
             // Fetch already recorded operator outputs
-            $.get("{{ route('spv.api.operator-data') }}", { style_order_id: styleId, date: date }, function(records) {
+            $.get("{{ route('spv.api.operator-data') }}", { style_order_id: styleId, date: date })
+            .fail(function(xhr) {
+                let msg = xhr.responseJSON?.error || 'Gagal memuat data output yang sudah direkam.';
+                showTableMessage(msg, true);
+                showNotification('error', msg);
+            })
+            .done(function(records) {
                 let recordedMap = {};
                 if(records && records.length > 0) {
                     records.forEach(r => {

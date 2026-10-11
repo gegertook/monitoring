@@ -119,13 +119,17 @@
 <script>
     function loadProcesses() {
         let styleId = $('#style_order').val();
-        if(!styleId) return;
+        if (!styleId) {
+            $('#process_id').html('<option value="">-- Pilih Style Order --</option>');
+            $('#process_info_container').html('<div class="text-center py-6 text-slate-400 text-xs">Belum ada style order pada line ini.</div>');
+            return;
+        }
 
         $('#process_info_container').html('<div class="text-center py-6 text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Memuat proses...</div>');
         $('#process_id').html('<option value="">-- Memuat Proses... --</option>');
 
         $.ajax({
-            url: `/ie/api/style-orders/${styleId}/processes`,
+            url: `/spv/api/style-orders/${styleId}/processes`,
             type: "GET",
             success: function(processes) {
                 let options = '<option value="">-- Pilih Proses --</option>';

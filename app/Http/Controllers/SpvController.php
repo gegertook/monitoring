@@ -291,6 +291,22 @@ class SpvController extends Controller
     // -------------------------------------------------------------------------
     // AJAX Endpoints — always scoped to SPV's assigned line
     // -------------------------------------------------------------------------
+    public function getStyleOrderProcesses(StyleOrder $styleOrder)
+    {
+        $line = $this->getMyLine();
+        if (!$line) {
+            return response()->json(['error' => 'Akun SPV belum punya line.'], 403);
+        }
+
+        if ($styleOrder->assigned_line_id !== $line->id) {
+            return response()->json(['error' => 'Style order tidak ditemukan pada line Anda.'], 404);
+        }
+
+        return response()->json(
+            $styleOrder->breakdownProcesses()->orderBy('sequence_number')->get()
+        );
+    }
+
     public function getLineOperators(Request $request)
     {
         try {
