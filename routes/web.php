@@ -9,6 +9,7 @@ use App\Http\Controllers\HrdController;
 use App\Http\Controllers\SpvController;
 use App\Http\Controllers\AdminProduksiController;
 use App\Http\Controllers\ManagerController;
+use App\Http\Controllers\MekanikController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\QcController;
 
@@ -62,6 +63,8 @@ Route::middleware(['auth'])->group(function () {
         Route::resource('employees', HrdController::class);
         Route::get('/plotting', [HrdController::class, 'plotting'])->name('plotting.index');
         Route::post('/plotting', [HrdController::class, 'storePlotting'])->name('plotting.store');
+        Route::post('/plotting/move', [HrdController::class, 'moveEmployee'])->name('plotting.move');
+        Route::post('/plotting/unassign', [HrdController::class, 'unassignEmployee'])->name('plotting.unassign');
         Route::delete('/plotting/{assignment}', [HrdController::class, 'destroyPlotting'])->name('plotting.destroy');
         
         // HRD: Manajemen Akun Staff / Supervisor / PPIC / IE / Admin / Manager
@@ -84,11 +87,28 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/hourly-output', [SpvController::class, 'storeHourlyOutput'])->name('hourly-output.store');
         Route::get('/operator-output', [SpvController::class, 'operatorOutput'])->name('operator-output.index');
         Route::post('/operator-output', [SpvController::class, 'storeOperatorOutput'])->name('operator-output.store');
+        // Downtime mesin
+        Route::post('/downtime', [SpvController::class, 'storeDowntime'])->name('downtime.store');
+        Route::post('/downtime/{breakdown}/request-replacement', [SpvController::class, 'requestReplacement'])->name('downtime.request-replacement');
         // AJAX
         Route::get('/api/style-orders/{styleOrder}/processes', [SpvController::class, 'getStyleOrderProcesses'])->name('api.style-order-processes');
         Route::get('/api/line-operators', [SpvController::class, 'getLineOperators'])->name('api.line-operators');
         Route::get('/api/hourly-data', [SpvController::class, 'getHourlyData'])->name('api.hourly-data');
         Route::get('/api/operator-data', [SpvController::class, 'getOperatorData'])->name('api.operator-data');
+        Route::get('/api/downtime', [SpvController::class, 'getDowntime'])->name('api.downtime');
+        Route::get('/api/line-machines', [SpvController::class, 'getLineMachines'])->name('api.line-machines');
+    });
+
+    // Admin Mekanik Routes (Master Mesin, Plotting Mesin, Penanganan Downtime)
+    Route::middleware(['role:admin_mekanik'])->prefix('mekanik')->name('mekanik.')->group(function () {
+        Route::get('/dashboard', [MekanikController::class, 'index'])->name('dashboard');
+        Route::get('/machines', [MekanikController::class, 'machinesIndex'])->name('machines.index');
+        Route::post('/machines', [MekanikController::class, 'storeMachine'])->name('machines.store');
+        Route::put('/machines/{machine}', [MekanikController::class, 'updateMachine'])->name('machines.update');
+        Route::post('/machines/{machine}/toggle', [MekanikController::class, 'toggleMachine'])->name('machines.toggle');
+        Route::post('/machines/{machine}/assign-line', [MekanikController::class, 'assignLine'])->name('machines.assign-line');
+        Route::get('/downtime', [MekanikController::class, 'downtimeIndex'])->name('downtime.index');
+        Route::post('/downtime/{breakdown}/resolve', [MekanikController::class, 'resolveBreakdown'])->name('downtime.resolve');
     });
     
     // Admin Produksi Routes
@@ -98,6 +118,9 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/validation/bulk-validate', [AdminProduksiController::class, 'bulkValidate'])->name('validation.bulk');
         Route::get('/reports', [AdminProduksiController::class, 'reports'])->name('reports.index');
         Route::get('/reports/export', [AdminProduksiController::class, 'export'])->name('reports.export');
+        // Downtime mesin: kirim mekanik ke line
+        Route::get('/downtime', [AdminProduksiController::class, 'downtimeIndex'])->name('downtime.index');
+        Route::post('/downtime/{breakdown}/dispatch', [AdminProduksiController::class, 'dispatchMechanic'])->name('downtime.dispatch');
         // Rekap Defect QC (Viewable by Admin Produksi)
         Route::get('/defect-recap', [QcController::class, 'recap'])->name('defects.recap');
         Route::get('/defect-export', [QcController::class, 'exportRecap'])->name('defects.export');

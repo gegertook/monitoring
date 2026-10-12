@@ -28,6 +28,10 @@ class HrdController extends Controller
             $query->where('skill_level', $request->skill_level);
         }
 
+        if ($request->filled('category')) {
+            $query->where('category', $request->category);
+        }
+
         if ($request->filled('is_active')) {
             $query->where('is_active', $request->boolean('is_active'));
         }
@@ -50,10 +54,14 @@ class HrdController extends Controller
         $validated = $request->validate([
             'nik' => 'required|string|unique:employees,nik|max:50',
             'name' => 'required|string|max:255',
-            'skill_level' => 'required|in:junior,intermediate,senior',
+            'category' => 'nullable|in:operator,mekanik',
+            'skill_level' => 'required_unless:category,mekanik|nullable|in:junior,intermediate,senior',
         ]);
 
         try {
+            $validated['category'] = $validated['category'] ?? Employee::CATEGORY_OPERATOR;
+            // kolom skill_level NOT NULL: mekanik boleh kosong di form, default junior
+            $validated['skill_level'] = $validated['skill_level'] ?? 'junior';
             $validated['is_active'] = true;
             $validated['created_by'] = auth()->id();
             
@@ -91,9 +99,14 @@ class HrdController extends Controller
         $validated = $request->validate([
             'nik' => 'required|string|max:50|unique:employees,nik,' . $employee->id,
             'name' => 'required|string|max:255',
-            'skill_level' => 'required|in:junior,intermediate,senior',
+            'category' => 'nullable|in:operator,mekanik',
+            'skill_level' => 'required_unless:category,mekanik|nullable|in:junior,intermediate,senior',
             'is_active' => 'nullable|boolean',
         ]);
+
+        $validated['category'] = $validated['category'] ?? $employee->category;
+        // kolom skill_level NOT NULL: mekanik boleh kosong di form, default junior
+        $validated['skill_level'] = $validated['skill_level'] ?? $employee->skill_level ?? 'junior';
 
         try {
             if ($request->has('is_active')) {
@@ -143,17 +156,114 @@ class HrdController extends Controller
     public function plotting(Request $request)
     {
         $date = $request->input('date', now()->toDateString());
-        $lines = ProductionLine::where('is_active', true)
-            ->with(['employeeAssignments' => function($q) use ($date) {
-                $q->whereDate('assigned_date', $date)->with('employee');
-            }])
+        $lines = ProductionLine::where('is_active', true)->get();
+
+        // Keanggotaan line disumberkan dari employees.current_line_id (satu-satunya
+        // sumber kebenaran), bukan baris assignment per tanggal — count kartu line
+        // tetap akurat walaupun baris assignment lama bertanggal lain (hasil backfill
+        // atau plotting pada hari sebelumnya).
+        $membersByLine = Employee::where('is_active', true)
+            ->operators()
+            ->whereNotNull('current_line_id')
+            ->with('currentLine')
+            ->orderBy('name')
+            ->get()
+            ->groupBy('current_line_id');
+
+        // Untuk daftar kiri & modal: semua operator yang sudah menempel di line
+        $assignedEmployees = $membersByLine->flatten()->values();
+
+        // Pool = hanya operator aktif yang belum menempel di line mana pun
+        // (kategori mekanik tidak ikut karena tidak bisa diplot ke line).
+        $employees = Employee::where('is_active', true)
+            ->operators()
+            ->whereNull('current_line_id')
+            ->orderBy('name')
             ->get();
-            
-        $employees = Employee::where('is_active', true)->orderBy('name')->get();
-        return view('hrd.plotting', compact('lines', 'employees', 'date'));
+
+        return view('hrd.plotting', compact('lines', 'employees', 'assignedEmployees', 'membersByLine', 'date'));
     }
 
+    /**
+     * Plotting massal: HRD bisa mencentang banyak karyawan sekaligus.
+     * Karyawan hanya boleh berada di satu line (permanen sampai HRD memindahnya).
+     */
     public function storePlotting(Request $request)
+    {
+        $validated = $request->validate([
+            'employee_ids' => 'required|array|min:1',
+            'employee_ids.*' => 'integer|exists:employees,id',
+            'production_line_id' => 'required|exists:production_lines,id',
+            'shift' => 'nullable|string',
+            'assigned_date' => 'required|date',
+        ]);
+
+        try {
+            $shift = $validated['shift'] ?? 'shift_1';
+            $lineId = $validated['production_line_id'];
+            $plotted = [];
+            $skipped = [];
+
+            foreach ($validated['employee_ids'] as $employeeId) {
+                $employee = Employee::with('currentLine')->find($employeeId);
+
+                if (!$employee || !$employee->is_active || $employee->isMekanik()) {
+                    $skipped[] = ($employee->name ?? 'ID ' . $employeeId) . ' bukan operator aktif';
+                    continue;
+                }
+
+                if ($employee->current_line_id && (int) $employee->current_line_id !== (int) $lineId) {
+                    $skipped[] = $employee->name . ' sudah menempel di ' . ($employee->currentLine->name ?? 'line lain') . ' (gunakan Pindah Line)';
+                    continue;
+                }
+
+                EmployeeLineAssignment::updateOrCreate(
+                    [
+                        'employee_id' => $employeeId,
+                        'assigned_date' => $validated['assigned_date'],
+                        'shift' => $shift,
+                    ],
+                    [
+                        'production_line_id' => $lineId,
+                        'assigned_by' => auth()->id(),
+                    ]
+                );
+
+                $employee->update(['current_line_id' => $lineId]);
+                $plotted[] = $employee->name;
+            }
+
+            $line = ProductionLine::find($lineId);
+            $message = count($plotted) . ' operator berhasil diplot ke ' . ($line->name ?? 'line') . '.';
+            if ($skipped) {
+                $message .= ' (' . count($skipped) . ' dilewati: ' . implode('; ', array_slice($skipped, 0, 3)) . (count($skipped) > 3 ? ', ...' : '') . ')';
+            }
+
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json([
+                    'success' => count($plotted) > 0,
+                    'message' => $message,
+                    'plotted' => $plotted,
+                    'skipped' => $skipped,
+                ]);
+            }
+
+            return redirect()->back()->with(count($plotted) ? 'success' : 'error', $message);
+        } catch (\Exception $e) {
+            Log::error('Error plotting employees: ' . $e->getMessage());
+
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['error' => 'Gagal plotting operator: ' . $e->getMessage()], 500);
+            }
+
+            return back()->with('error', 'Gagal plotting operator.');
+        }
+    }
+
+    /**
+     * Pindah Line: satu-satunya cara memindahkan karyawan yang sudah menempel di line lain.
+     */
+    public function moveEmployee(Request $request)
     {
         $validated = $request->validate([
             'employee_id' => 'required|exists:employees,id',
@@ -163,45 +273,105 @@ class HrdController extends Controller
         ]);
 
         try {
-            $validated['shift'] = $validated['shift'] ?? 'shift_1';
-            $validated['assigned_by'] = auth()->id();
-            
-            // Check if already plotted on this date and shift
-            $existing = EmployeeLineAssignment::where('employee_id', $validated['employee_id'])
-                ->whereDate('assigned_date', $validated['assigned_date'])
-                ->where('shift', $validated['shift'])
-                ->first();
-                
-            if ($existing) {
-                $existing->update([
-                    'production_line_id' => $validated['production_line_id'],
-                    'assigned_by' => auth()->id()
-                ]);
-                $assignment = $existing;
-            } else {
-                $assignment = EmployeeLineAssignment::create($validated);
+            $employee = Employee::with('currentLine')->find($validated['employee_id']);
+
+            if (!$employee || !$employee->is_active || $employee->isMekanik()) {
+                return response()->json(['error' => 'Karyawan bukan operator aktif.'], 422);
             }
-            
+
+            if ($employee->current_line_id && (int) $employee->current_line_id === (int) $validated['production_line_id']) {
+                return response()->json(['error' => $employee->name . ' sudah berada di line tersebut.'], 422);
+            }
+
+            $fromLine = $employee->currentLine->name ?? 'line sebelumnya';
+
+            // Lepas semua plotting lama, lalu tempelkan ke line baru
+            EmployeeLineAssignment::where('employee_id', $employee->id)->delete();
+
+            EmployeeLineAssignment::create([
+                'employee_id' => $employee->id,
+                'production_line_id' => $validated['production_line_id'],
+                'shift' => $validated['shift'] ?? 'shift_1',
+                'assigned_date' => $validated['assigned_date'],
+                'assigned_by' => auth()->id(),
+            ]);
+
+            $employee->update(['current_line_id' => $validated['production_line_id']]);
+
+            $toLine = ProductionLine::find($validated['production_line_id'])->name ?? 'line baru';
+            $message = "{$employee->name} dipindah dari {$fromLine} ke {$toLine}.";
+
             if ($request->ajax() || $request->wantsJson()) {
-                return response()->json(['success' => true, 'message' => 'Operator berhasil diplot ke line produksi.', 'data' => $assignment]);
+                return response()->json(['success' => true, 'message' => $message]);
             }
-            
-            return redirect()->back()->with('success', 'Operator berhasil diplot ke line produksi.');
+
+            return redirect()->back()->with('success', $message);
         } catch (\Exception $e) {
-            Log::error('Error plotting employee: ' . $e->getMessage());
-            
+            Log::error('Error moving employee: ' . $e->getMessage());
+
             if ($request->ajax() || $request->wantsJson()) {
-                return response()->json(['error' => 'Gagal plotting operator: ' . $e->getMessage()], 500);
+                return response()->json(['error' => 'Gagal memindahkan karyawan: ' . $e->getMessage()], 500);
             }
-            
-            return back()->with('error', 'Gagal plotting operator.');
+
+            return back()->with('error', 'Gagal memindahkan karyawan.');
+        }
+    }
+
+    /**
+     * Lepas operator dari line; kembali ke pool dan bisa diplot ulang.
+     */
+    public function unassignEmployee(Request $request)
+    {
+        $validated = $request->validate([
+            'employee_id' => 'required|exists:employees,id',
+        ]);
+
+        try {
+            $employee = Employee::find($validated['employee_id']);
+
+            if (!$employee || $employee->isMekanik()) {
+                if ($request->ajax() || $request->wantsJson()) {
+                    return response()->json(['error' => 'Karyawan bukan operator.'], 422);
+                }
+                return back()->with('error', 'Karyawan bukan operator.');
+            }
+
+            $lineName = $employee->currentLine->name ?? 'line-nya';
+
+            EmployeeLineAssignment::where('employee_id', $employee->id)->delete();
+            $employee->update(['current_line_id' => null]);
+
+            $message = "{$employee->name} dilepas dari {$lineName} dan kembali ke pool.";
+
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['success' => true, 'message' => $message]);
+            }
+
+            return redirect()->back()->with('success', $message);
+        } catch (\Exception $e) {
+            Log::error('Error unassigning employee: ' . $e->getMessage());
+
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['error' => 'Gagal melepas operator dari line.'], 500);
+            }
+
+            return back()->with('error', 'Gagal melepas operator dari line.');
         }
     }
 
     public function destroyPlotting(Request $request, EmployeeLineAssignment $assignment)
     {
         try {
+            $employee = Employee::find($assignment->employee_id);
             $assignment->delete();
+
+            // Melepas plotting = karyawan kembali ke pool (bisa diplot ke line mana pun)
+            if ($employee) {
+                $stillAssigned = EmployeeLineAssignment::where('employee_id', $employee->id)->exists();
+                if (!$stillAssigned) {
+                    $employee->update(['current_line_id' => null]);
+                }
+            }
             
             if ($request->ajax() || $request->wantsJson()) {
                 return response()->json(['success' => true, 'message' => 'Plotting operator berhasil dihapus.']);
@@ -222,7 +392,12 @@ class HrdController extends Controller
     public function getEmployees(Request $request)
     {
         try {
-            $query = Employee::where('is_active', true);
+            $query = Employee::where('is_active', true)->with('currentLine');
+
+            // Halaman plotting hanya boleh melihat karyawan berkategori operator
+            if ($request->boolean('operators_only', true)) {
+                $query->operators();
+            }
             
             if ($request->filled('search')) {
                 $search = $request->search;
@@ -288,7 +463,7 @@ class HrdController extends Controller
             'inactive' => User::where('is_active', false)->count(),
             'spv_count' => User::where('role', 'spv')->count(),
             'qc_count' => User::where('role', 'admin_qc')->count(),
-            'office_count' => User::whereIn('role', ['ppic', 'ie', 'admin_produksi', 'manager', 'hrd', 'admin_qc'])->count(),
+            'office_count' => User::whereIn('role', ['ppic', 'ie', 'admin_produksi', 'manager', 'hrd', 'admin_qc', 'admin_mekanik'])->count(),
         ];
 
         $roles = [
@@ -298,6 +473,7 @@ class HrdController extends Controller
             'spv' => 'Supervisor Line (SPV)',
             'admin_qc' => 'Admin Quality Control (QC)',
             'admin_produksi' => 'Admin Produksi',
+            'admin_mekanik' => 'Admin Mekanik (Mesin & Downtime)',
             'manager' => 'Executive Manager',
         ];
 
@@ -320,7 +496,7 @@ class HrdController extends Controller
             'nik' => 'required|string|max:50|unique:users,nik',
             'name' => 'required|string|max:255',
             'email' => 'required|email|max:255|unique:users,email',
-            'role' => 'required|in:ppic,ie,hrd,spv,admin_produksi,manager,admin_qc',
+            'role' => 'required|in:ppic,ie,hrd,spv,admin_produksi,manager,admin_qc,admin_mekanik',
             'password' => 'required|string|min:6',
             'is_active' => 'nullable|boolean',
             'assigned_line_id' => 'nullable|exists:production_lines,id',
@@ -361,7 +537,7 @@ class HrdController extends Controller
             'nik' => 'required|string|max:50|unique:users,nik,' . $user->id,
             'name' => 'required|string|max:255',
             'email' => 'required|email|max:255|unique:users,email,' . $user->id,
-            'role' => 'required|in:ppic,ie,hrd,spv,admin_produksi,manager,admin_qc',
+            'role' => 'required|in:ppic,ie,hrd,spv,admin_produksi,manager,admin_qc,admin_mekanik',
             'password' => 'nullable|string|min:6',
             'is_active' => 'nullable|boolean',
             'assigned_line_id' => 'nullable|exists:production_lines,id',

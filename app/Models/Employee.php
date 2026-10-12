@@ -13,10 +13,15 @@ class Employee extends Model
 {
     use HasFactory;
 
+    public const CATEGORY_OPERATOR = 'operator';
+    public const CATEGORY_MEKANIK = 'mekanik';
+
     protected $fillable = [
         'nik',
         'name',
         'skill_level',
+        'category',
+        'current_line_id',
         'is_active',
         'created_by',
     ];
@@ -28,6 +33,21 @@ class Employee extends Model
     public function lineAssignments()
     {
         return $this->hasMany(EmployeeLineAssignment::class);
+    }
+
+    public function currentLine()
+    {
+        return $this->belongsTo(ProductionLine::class, 'current_line_id');
+    }
+
+    public function scopeOperators($query)
+    {
+        return $query->where('category', self::CATEGORY_OPERATOR);
+    }
+
+    public function isMekanik(): bool
+    {
+        return $this->category === self::CATEGORY_MEKANIK;
     }
 
     public function operatorTasks()

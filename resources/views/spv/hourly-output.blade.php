@@ -8,7 +8,7 @@
         <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 pb-3 border-b border-slate-100">
             <div>
                 <h2 class="text-xl font-bold text-slate-800">Pencatatan Output Line Per Jam & Analisis Defect</h2>
-                <p class="text-xs text-slate-500">SPV Line mencatat output barang bagus dan defect rate setiap jam kerja (8 Jam).</p>
+                <p class="text-xs text-slate-500">SPV Line mencatat <b>output barang bagus</b> setiap jam kerja (8 Jam). Defect dicatat <b>Admin QC</b> dan hanya tampil sebagai informasi di sini.</p>
             </div>
             <div class="flex items-center gap-2">
                 {{-- Fixed line badge --}}
@@ -85,7 +85,7 @@
                         <tr>
                             <th class="px-5 py-3.5 text-left w-32">Jam Ke</th>
                             <th class="px-5 py-3.5 text-left">Output Barang Bagus (Pcs)</th>
-                            <th class="px-5 py-3.5 text-left">Jumlah Cacat / Defect (Pcs)</th>
+                            <th class="px-5 py-3.5 text-left">Jumlah Cacat / Defect (Pcs) <span class="block text-[10px] font-normal text-slate-400">diisi Admin QC</span></th>
                             <th class="px-5 py-3.5 text-left w-36">Defect Rate (%)</th>
                             <th class="px-5 py-3.5 text-center w-36">Status Kualitas</th>
                         </tr>
@@ -105,7 +105,7 @@
                                 <input type="number" name="hours[{{ $i }}][output_qty]" class="output-input w-full max-w-[200px] py-1.5 px-3 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none font-semibold text-slate-800" value="0" min="0">
                             </td>
                             <td class="px-5 py-3">
-                                <input type="number" name="hours[{{ $i }}][defect_qty]" class="defect-input w-full max-w-[200px] py-1.5 px-3 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none font-semibold text-rose-600" value="0" min="0">
+                                <span class="defect-view text-xs font-semibold text-rose-600 bg-rose-50 border border-rose-100 rounded-lg px-2.5 py-1.5 inline-block" data-value="0">0 pcs (QC)</span>
                             </td>
                             <td class="px-5 py-3 font-mono font-bold text-slate-700 defect-rate-val">
                                 0.00%
@@ -148,7 +148,7 @@
 
         $('#hourly_rows tr').each(function() {
             let outVal = parseInt($(this).find('.output-input').val()) || 0;
-            let defVal = parseInt($(this).find('.defect-input').val()) || 0;
+            let defVal = parseInt($(this).find('.defect-view').data('value')) || 0;
             
             totalOutput += outVal;
             totalDefect += defVal;
@@ -217,8 +217,9 @@
                 if(response.success && response.hours) {
                     $.each(response.hours, function(hourNum, data) {
                         let row = $(`#hourly_rows tr[data-hour="${hourNum}"]`);
+                        let defectQty = data.defect_qty || 0;
                         row.find('.output-input').val(data.output_qty || 0);
-                        row.find('.defect-input').val(data.defect_qty || 0);
+                        row.find('.defect-view').text(defectQty + ' pcs (QC)').data('value', defectQty);
                     });
                     calculateRates();
                     showNotification('success', 'Data output berhasil dimuat.');
@@ -235,7 +236,7 @@
         calculateRates();
         loadHourlyData();
 
-        $('.output-input, .defect-input').on('input', calculateRates);
+        $('.output-input').on('input', calculateRates);
 
         $('#load_data_btn').click(function() {
             loadHourlyData();
@@ -260,8 +261,7 @@
             $('#hourly_rows tr').each(function() {
                 let h = $(this).data('hour');
                 hoursData[h] = {
-                    output_qty: $(this).find('.output-input').val(),
-                    defect_qty: $(this).find('.defect-input').val()
+                    output_qty: $(this).find('.output-input').val()
                 };
             });
 

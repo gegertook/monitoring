@@ -119,6 +119,21 @@ class User extends Authenticatable
         return $this->isRole('admin_qc');
     }
 
+    public function isAdminMekanik()
+    {
+        return $this->isRole('admin_mekanik');
+    }
+
+    public function machines()
+    {
+        return $this->hasMany(Machine::class, 'created_by');
+    }
+
+    public function mechanicBreakdowns()
+    {
+        return $this->hasMany(MachineBreakdown::class, 'mechanic_user_id');
+    }
+
     public function qcDefects()
     {
         return $this->hasMany(QcDefect::class, 'recorded_by');

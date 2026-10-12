@@ -58,6 +58,21 @@
                     </select>
                 </div>
 
+                <div>
+                    <label for="machine_id" class="block text-xs font-bold uppercase text-slate-600 mb-1.5">Mesin yang Dipakai</label>
+                    <select id="machine_id" name="machine_id" class="w-full py-2.5 px-3 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white">
+                        <option value="">-- Tanpa Mesin --</option>
+                        @foreach($machines as $machine)
+                            <option value="{{ $machine->id }}" {{ $machine->status === 'rusak' ? 'disabled' : '' }}>
+                                {{ $machine->code }} - {{ $machine->name }}{{ $machine->status === 'rusak' ? ' (RUSAK)' : '' }}
+                            </option>
+                        @endforeach
+                    </select>
+                    @if($machines->isEmpty())
+                        <p class="text-[11px] text-amber-600 mt-1"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Belum ada mesin yang diplot ke line ini.</p>
+                    @endif
+                </div>
+
                 <div class="pt-2">
                     <button type="submit" id="submit_assignment" class="w-full inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 px-4 rounded-xl shadow-sm transition">
                         <i class="fa-solid fa-user-check text-sm"></i>
@@ -90,6 +105,7 @@
                         <th class="px-5 py-3.5 text-left">Nama Operator</th>
                         <th class="px-5 py-3.5 text-left">NIK</th>
                         <th class="px-5 py-3.5 text-left">Proses Pengerjaan</th>
+                        <th class="px-5 py-3.5 text-left">Mesin</th>
                         <th class="px-5 py-3.5 text-left">Style Order</th>
                         <th class="px-5 py-3.5 text-left">Tanggal</th>
                     </tr>
@@ -100,12 +116,19 @@
                             <td class="px-5 py-3.5 font-bold text-slate-800">{{ $task->employee->name ?? '-' }}</td>
                             <td class="px-5 py-3.5 font-mono text-xs text-slate-500">{{ $task->employee->nik ?? '-' }}</td>
                             <td class="px-5 py-3.5 font-medium text-indigo-700">{{ $task->breakdownProcess->process_name ?? '-' }}</td>
+                            <td class="px-5 py-3.5 text-xs">
+                                @if($task->machine)
+                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700"><i class="fa-solid fa-gears"></i> {{ $task->machine->code }}</span>
+                                @else
+                                    <span class="text-slate-300">-</span>
+                                @endif
+                            </td>
                             <td class="px-5 py-3.5 font-semibold text-slate-700">{{ $task->styleOrder->code_style ?? '-' }}</td>
                             <td class="px-5 py-3.5 text-slate-500">{{ $task->assigned_date ? $task->assigned_date->format('d M Y') : '-' }}</td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="5" class="px-5 py-8 text-center text-slate-400">Belum ada penugasan proses pada tanggal ini.</td>
+                            <td colspan="6" class="px-5 py-8 text-center text-slate-400">Belum ada penugasan proses pada tanggal ini.</td>
                         </tr>
                     @endforelse
                 </tbody>
@@ -190,6 +213,7 @@
                     style_order_id: styleId,
                     breakdown_process_id: processId,
                     employee_id: employeeId,
+                    machine_id: $('#machine_id').val() || '',
                     assigned_date: date
                 },
                 success: function(res) {

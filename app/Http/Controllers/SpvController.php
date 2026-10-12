@@ -4,12 +4,15 @@ namespace App\Http\Controllers;
 
 use App\Models\OperatorTask;
 use App\Models\HourlyOutput;
+use App\Models\Machine;
+use App\Models\MachineBreakdown;
 use App\Models\OperatorOutput;
 use App\Models\BreakdownProcess;
 use App\Models\ProductionLine;
 use App\Models\StyleOrder;
 use App\Models\Employee;
 use App\Models\EmployeeLineAssignment;
+use App\Support\Notifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
@@ -60,7 +63,10 @@ class SpvController extends Controller
 
         $employees = Employee::whereIn('id', $lineEmployeeIds)->orderBy('name')->get();
 
-        $tasks = OperatorTask::with(['employee', 'breakdownProcess', 'styleOrder'])
+        // Mesin yang menempel di line ini (untuk pemilihan mesin pada tiap tugas)
+        $machines = Machine::active()->onLine($line->id)->orderBy('code')->get();
+
+        $tasks = OperatorTask::with(['employee', 'breakdownProcess', 'styleOrder', 'machine'])
             ->whereDate('assigned_date', $date)
             ->whereHas('breakdownProcess', function ($q) use ($line) {
                 $q->whereHas('styleOrder', function ($sq) use ($line) {
@@ -70,7 +76,7 @@ class SpvController extends Controller
             ->latest()
             ->get();
 
-        return view('spv.task-assignment', compact('line', 'styleOrders', 'employees', 'tasks', 'date'));
+        return view('spv.task-assignment', compact('line', 'styleOrders', 'employees', 'tasks', 'machines', 'date'));
     }
 
     public function storeTask(Request $request)
@@ -84,8 +90,20 @@ class SpvController extends Controller
             'employee_id' => 'required|exists:employees,id',
             'breakdown_process_id' => 'required|exists:breakdown_processes,id',
             'style_order_id' => 'required|exists:style_orders,id',
+            'machine_id' => 'nullable|exists:machines,id',
             'assigned_date' => 'required|date',
         ]);
+
+        // Mesin yang dipakai harus mesin yang menempel di line SPV ini
+        if (!empty($validated['machine_id'])) {
+            $machineOnLine = Machine::where('id', $validated['machine_id'])
+                ->where('current_line_id', $line->id)
+                ->exists();
+
+            if (!$machineOnLine) {
+                return response()->json(['error' => 'Mesin tidak terdaftar di line Anda.'], 422);
+            }
+        }
 
         try {
             $validated['assigned_by'] = auth()->id();
@@ -147,18 +165,18 @@ class SpvController extends Controller
 
                 foreach ($request->hours as $h => $data) {
                     $outputQty = intval($data['output_qty'] ?? 0);
-                    $defectQty = intval($data['defect_qty'] ?? 0);
 
+                    // SPV hanya mencatat output bagus. Defect milik Admin QC (disinkronkan oleh QC),
+                    // jadi tidak ditimpa di sini.
                     HourlyOutput::updateOrCreate(
                         [
                             'production_line_id' => $lineId,
                             'style_order_id' => $styleId,
                             'hour_number' => intval($h),
-                            'production_date' => $date,
+                            'production_date' => Carbon::parse($date)->startOfDay(),
                         ],
                         [
                             'output_qty' => $outputQty,
-                            'defect_qty' => $defectQty,
                             'recorded_by' => auth()->id(),
                             'is_validated' => false,
                         ]
@@ -179,12 +197,11 @@ class SpvController extends Controller
             }
         }
 
-        // Single row
+        // Single row (defect sengaja tidak divalidasi/diterima: diisi oleh Admin QC)
         $validated = $request->validate([
             'style_order_id' => 'required|exists:style_orders,id',
             'hour_number' => 'required|integer|min:1|max:24',
             'output_qty' => 'required|integer|min:0',
-            'defect_qty' => 'required|integer|min:0',
             'production_date' => 'required|date',
         ]);
 
@@ -194,11 +211,10 @@ class SpvController extends Controller
                     'production_line_id' => $line->id,
                     'style_order_id' => $validated['style_order_id'],
                     'hour_number' => $validated['hour_number'],
-                    'production_date' => $validated['production_date'],
+                    'production_date' => Carbon::parse($validated['production_date'])->startOfDay(),
                 ],
                 [
                     'output_qty' => $validated['output_qty'],
-                    'defect_qty' => $validated['defect_qty'],
                     'recorded_by' => auth()->id(),
                     'is_validated' => false,
                 ]
@@ -240,7 +256,14 @@ class SpvController extends Controller
 
         $employees = Employee::whereIn('id', $lineEmployeeIds)->where('is_active', true)->orderBy('name')->get();
 
-        return view('spv.operator-output', compact('line', 'styleOrders', 'date', 'employees'));
+        // Mesin yang menempel di line ini + laporan downtime yang masih terbuka
+        $machines = Machine::active()->onLine($line->id)->with('openBreakdown')->orderBy('code')->get();
+        $openBreakdowns = MachineBreakdown::open()->forLine($line->id)
+            ->with(['machine', 'styleOrder'])
+            ->latest('reported_at')
+            ->get();
+
+        return view('spv.operator-output', compact('line', 'styleOrders', 'date', 'employees', 'machines', 'openBreakdowns'));
     }
 
     public function storeOperatorOutput(Request $request)
@@ -255,21 +278,21 @@ class SpvController extends Controller
             'style_order_id' => 'required|exists:style_orders,id',
             'breakdown_process_id' => 'required|exists:breakdown_processes,id',
             'output_qty' => 'required|integer|min:0',
-            'defect_qty' => 'required|integer|min:0',
             'production_date' => 'required|date',
         ]);
 
         try {
+            // SPV hanya mencatat output. Defect per operator bukan kewenangan SPV (diisi Admin QC),
+            // jadi kolom defect_qty tidak lagi ditulis dari halaman ini.
             $record = OperatorOutput::updateOrCreate(
                 [
                     'employee_id' => $validated['employee_id'],
                     'breakdown_process_id' => $validated['breakdown_process_id'],
-                    'production_date' => $validated['production_date'],
+                    'production_date' => Carbon::parse($validated['production_date'])->startOfDay(),
                 ],
                 [
                     'style_order_id' => $validated['style_order_id'],
                     'output_qty' => $validated['output_qty'],
-                    'defect_qty' => $validated['defect_qty'],
                     'recorded_by' => auth()->id(),
                 ]
             );
@@ -398,6 +421,164 @@ class SpvController extends Controller
             return response()->json($query->get());
         } catch (\Exception $e) {
             return response()->json(['error' => 'Failed to fetch operator data'], 500);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Downtime Mesin — dilaporkan SPV, ditangani Admin Produksi & Admin Mekanik
+    // -------------------------------------------------------------------------
+
+    /**
+     * Mesin yang menempel di line SPV (untuk dropdown pemilihan mesin pada tugas).
+     */
+    public function getLineMachines()
+    {
+        $line = $this->getMyLine();
+        if (!$line) {
+            return response()->json(['error' => 'Akun SPV belum punya line.'], 403);
+        }
+
+        return response()->json(
+            Machine::active()->onLine($line->id)->with('openBreakdown')->orderBy('code')->get()
+        );
+    }
+
+    /**
+     * Status downtime di line SPV, termasuk sisa waktu sebelum boleh minta ganti mesin.
+     */
+    public function getDowntime()
+    {
+        $line = $this->getMyLine();
+        if (!$line) {
+            return response()->json(['error' => 'Akun SPV belum punya line.'], 403);
+        }
+
+        $breakdowns = MachineBreakdown::open()->forLine($line->id)
+            ->with(['machine', 'styleOrder'])
+            ->latest('reported_at')
+            ->get()
+            ->map(fn ($b) => [
+                'id' => $b->id,
+                'machine_id' => $b->machine_id,
+                'machine_code' => $b->machine->code ?? '-',
+                'machine_name' => $b->machine->name ?? '-',
+                'status' => $b->status,
+                'notes' => $b->notes,
+                'reported_at' => $b->reported_at->toDateTimeString(),
+                'minutes_since_reported' => $b->minutesSinceReported(),
+                'mechanic_sent_at' => $b->mechanic_sent_at?->toDateTimeString(),
+                'can_request_replacement' => $b->canRequestReplacement(),
+            ]);
+
+        return response()->json(['success' => true, 'breakdowns' => $breakdowns]);
+    }
+
+    /**
+     * SPV melaporkan mesin di line-nya rusak (pencatatan output per operator).
+     */
+    public function storeDowntime(Request $request)
+    {
+        $line = $this->getMyLine();
+        if (!$line) {
+            return response()->json(['error' => 'Akun SPV Anda belum ditetapkan ke line manapun.'], 403);
+        }
+
+        $validated = $request->validate([
+            'machine_id' => 'required|exists:machines,id',
+            'style_order_id' => 'nullable|exists:style_orders,id',
+            'notes' => 'nullable|string|max:500',
+        ]);
+
+        $machine = Machine::find($validated['machine_id']);
+
+        if (!$machine || (int) $machine->current_line_id !== (int) $line->id) {
+            return response()->json(['error' => 'Mesin tidak terdaftar di line Anda.'], 422);
+        }
+
+        if ($machine->isBroken()) {
+            return response()->json(['error' => "Mesin {$machine->code} sudah dilaporkan rusak dan sedang ditangani."], 422);
+        }
+
+        try {
+            $breakdown = MachineBreakdown::create([
+                'machine_id' => $machine->id,
+                'production_line_id' => $line->id,
+                'style_order_id' => $validated['style_order_id'] ?? null,
+                'notes' => $validated['notes'] ?? null,
+                'status' => MachineBreakdown::STATUS_REPORTED,
+                'reported_by' => auth()->id(),
+                'reported_at' => now(),
+            ]);
+
+            Notifier::toRoles(
+                ['admin_mekanik', 'admin_produksi'],
+                'mesin_rusak',
+                "MESIN RUSAK - {$line->name}",
+                "Mesin {$machine->code} ({$machine->name}) dilaporkan rusak di {$line->name} oleh " . auth()->user()->name . '.'
+                    . (!empty($validated['notes']) ? ' Keluhan: ' . $validated['notes'] : ''),
+                ['breakdown_id' => $breakdown->id, 'line_id' => $line->id, 'machine_id' => $machine->id]
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => "Mesin {$machine->code} dilaporkan rusak. Admin mekanik & admin produksi sudah diberi tahu.",
+                'data' => $breakdown,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error reporting machine breakdown: ' . $e->getMessage());
+            return response()->json(['error' => 'Gagal melaporkan mesin rusak: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Lewat 1 jam sejak laporan, SPV boleh meminta mesin pengganti.
+     */
+    public function requestReplacement(Request $request, MachineBreakdown $breakdown)
+    {
+        $line = $this->getMyLine();
+        if (!$line) {
+            return response()->json(['error' => 'Akun SPV Anda belum ditetapkan ke line manapun.'], 403);
+        }
+
+        if ((int) $breakdown->production_line_id !== (int) $line->id) {
+            return response()->json(['error' => 'Laporan downtime tidak berada di line Anda.'], 403);
+        }
+
+        if (!$breakdown->isOpen()) {
+            return response()->json(['error' => 'Laporan downtime ini sudah selesai.'], 422);
+        }
+
+        if ($breakdown->status === MachineBreakdown::STATUS_REPLACEMENT_REQUESTED) {
+            return response()->json(['error' => 'Permintaan ganti mesin sudah dikirim sebelumnya.'], 422);
+        }
+
+        if (!$breakdown->canRequestReplacement()) {
+            $remaining = max(1, MachineBreakdown::REPLACEMENT_THRESHOLD_MINUTES - $breakdown->minutesSinceReported());
+            return response()->json([
+                'error' => "Permintaan ganti mesin baru boleh dikirim lewat 1 jam sejak laporan. Kurang {$remaining} menit.",
+            ], 403);
+        }
+
+        try {
+            $breakdown->load('machine');
+            $breakdown->update([
+                'status' => MachineBreakdown::STATUS_REPLACEMENT_REQUESTED,
+                'replacement_requested_by' => auth()->id(),
+                'replacement_requested_at' => now(),
+            ]);
+
+            Notifier::toRoles(
+                ['admin_mekanik', 'admin_produksi'],
+                'permintaan_ganti_mesin',
+                "PERMINTAAN GANTI MESIN - {$line->name}",
+                "SPV {$line->name} meminta penggantian mesin {$breakdown->machine->code} karena downtime sudah lebih dari 1 jam.",
+                ['breakdown_id' => $breakdown->id, 'line_id' => $line->id, 'machine_id' => $breakdown->machine_id]
+            );
+
+            return response()->json(['success' => true, 'message' => 'Permintaan ganti mesin dikirim ke admin mekanik.']);
+        } catch (\Exception $e) {
+            Log::error('Error requesting machine replacement: ' . $e->getMessage());
+            return response()->json(['error' => 'Gagal mengirim permintaan ganti mesin: ' . $e->getMessage()], 500);
         }
     }
 }

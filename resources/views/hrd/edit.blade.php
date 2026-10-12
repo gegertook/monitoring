@@ -34,6 +34,14 @@
                 <input type="text" name="name" id="name" value="{{ old('name', $employee->name) }}" class="w-full py-2.5 px-3.5 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none" required>
             </div>
 
+            <div>
+                <label for="category" class="block text-xs font-bold uppercase text-slate-600 mb-1.5">Kategori Karyawan</label>
+                <select name="category" id="category" class="w-full py-2.5 px-3.5 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white">
+                    <option value="operator" {{ old('category', $employee->category) == 'operator' ? 'selected' : '' }}>Operator (bisa diplot ke line)</option>
+                    <option value="mekanik" {{ old('category', $employee->category) == 'mekanik' ? 'selected' : '' }}>Mekanik (tidak bisa diplot ke line)</option>
+                </select>
+            </div>
+
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label for="skill_level" class="block text-xs font-bold uppercase text-slate-600 mb-1.5">Skill Level</label>
@@ -60,4 +68,18 @@
         </form>
     </div>
 </div>
+@endsection
+
+@section('scripts')
+<script>
+    $(document).ready(function() {
+        function toggleSkillRequirement() {
+            let isMekanik = $('#category').val() === 'mekanik';
+            $('#skill_level').prop('required', !isMekanik);
+        }
+
+        $('#category').change(toggleSkillRequirement);
+        toggleSkillRequirement();
+    });
+</script>
 @endsection

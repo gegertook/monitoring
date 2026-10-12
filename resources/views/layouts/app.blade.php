@@ -142,13 +142,36 @@
                             <li>
                                 <a href="{{ route('spv.hourly-output.index') }}" class="flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium {{ request()->routeIs('spv.hourly-output.*') ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white' }}">
                                     <i class="fa-solid fa-clock w-5 text-center"></i>
-                                    <span>Hourly Output & Defect</span>
+                                    <span>Output Per Jam Line</span>
                                 </a>
                             </li>
                             <li>
                                 <a href="{{ route('spv.operator-output.index') }}" class="flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium {{ request()->routeIs('spv.operator-output.*') ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white' }}">
                                     <i class="fa-solid fa-user-check w-5 text-center"></i>
-                                    <span>Output Individu</span>
+                                    <span>Output Individu &amp; Mesin</span>
+                                </a>
+                            </li>
+                        @endif
+
+                        {{-- Admin Mekanik Role --}}
+                        @if($role === 'admin_mekanik')
+                            <li class="pt-4 pb-1"><span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3.5">Admin Mekanik</span></li>
+                            <li>
+                                <a href="{{ route('mekanik.dashboard') }}" class="flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium {{ request()->routeIs('mekanik.dashboard') ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white' }}">
+                                    <i class="fa-solid fa-gauge-high w-5 text-center"></i>
+                                    <span>Dashboard Mekanik</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('mekanik.machines.index') }}" class="flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium {{ request()->routeIs('mekanik.machines.*') ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white' }}">
+                                    <i class="fa-solid fa-gears w-5 text-center"></i>
+                                    <span>Master Mesin & Line</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('mekanik.downtime.index') }}" class="flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium {{ request()->routeIs('mekanik.downtime.*') ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white' }}">
+                                    <i class="fa-solid fa-triangle-exclamation w-5 text-center"></i>
+                                    <span>Papan Downtime</span>
                                 </a>
                             </li>
                         @endif
@@ -160,6 +183,12 @@
                                 <a href="{{ route('admin.validation.index') }}" class="flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium {{ request()->routeIs('admin.validation.*') ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white' }}">
                                     <i class="fa-solid fa-check-double w-5 text-center"></i>
                                     <span>Validasi Input SPV</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('admin.downtime.index') }}" class="flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium {{ request()->routeIs('admin.downtime.*') ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white' }}">
+                                    <i class="fa-solid fa-screwdriver-wrench w-5 text-center"></i>
+                                    <span>Downtime & Kirim Mekanik</span>
                                 </a>
                             </li>
                             <li>

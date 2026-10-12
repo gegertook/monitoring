@@ -100,7 +100,10 @@
                             <td class="px-5 py-4 font-mono font-bold text-slate-800">${item.nik}</td>
                             <td class="px-5 py-4 font-medium text-slate-800">${item.name}</td>
                             <td class="px-5 py-4">
-                                <span class="px-2.5 py-1 text-xs font-semibold rounded-full border ${skillBadge}">${item.skill_level.toUpperCase()}</span>
+                                <span class="px-2.5 py-1 text-xs font-semibold rounded-full border ${skillBadge}">${(item.skill_level || '-').toUpperCase()}</span>
+                                ${item.category === 'mekanik'
+                                    ? '<span class="ml-1.5 inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-full bg-purple-100 text-purple-800 border border-purple-200"><i class="fa-solid fa-wrench text-[10px]"></i>Mekanik</span>'
+                                    : ''}
                             </td>
                             <td class="px-5 py-4">${statusBadge}</td>
                             <td class="px-5 py-4 text-center">

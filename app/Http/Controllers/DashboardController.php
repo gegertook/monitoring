@@ -30,6 +30,8 @@ class DashboardController extends Controller
                 return redirect()->route('manager.dashboard');
             case 'admin_qc':
                 return redirect()->route('qc.defects.index');
+            case 'admin_mekanik':
+                return redirect()->route('mekanik.dashboard');
             default:
                 // Default fallback if role is unknown or missing
                 return abort(403, 'Unauthorized access or role not recognized.');

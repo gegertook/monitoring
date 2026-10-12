@@ -3,8 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\HourlyOutput;
+use App\Models\Machine;
+use App\Models\MachineBreakdown;
 use App\Models\ProductionLine;
 use App\Models\StyleOrder;
+use App\Models\User;
+use App\Support\Notifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
@@ -55,6 +59,118 @@ class AdminProduksiController extends Controller
             'lines',
             'styleOrders'
         ));
+    }
+
+    // -------------------------------------------------------------------------
+    // Downtime Mesin — Admin Produksi mengirim mekanik ke line
+    // -------------------------------------------------------------------------
+    public function downtimeIndex(Request $request)
+    {
+        $status = $request->input('status');
+        $lineId = $request->input('line_id');
+
+        $query = MachineBreakdown::with(['machine', 'productionLine', 'styleOrder', 'reporter', 'mechanic', 'replacementMachine'])
+            ->latest('reported_at');
+
+        if ($status === 'open') {
+            $query->open();
+        } elseif ($status) {
+            $query->where('status', $status);
+        }
+
+        if ($lineId) {
+            $query->forLine($lineId);
+        }
+
+        $breakdowns = $query->get();
+
+        $stats = [
+            'open' => MachineBreakdown::open()->count(),
+            'waiting_mechanic' => MachineBreakdown::open()->where('status', 'reported')->count(),
+            'in_progress' => MachineBreakdown::open()->where('status', 'mechanic_sent')->count(),
+            'replacement_requested' => MachineBreakdown::open()->where('status', 'replacement_requested')->count(),
+            'resolved_today' => MachineBreakdown::whereNotNull('resolved_at')->whereDate('resolved_at', Carbon::today())->count(),
+        ];
+
+        $lines = ProductionLine::where('is_active', true)->orderBy('name')->get();
+        $mechanics = User::where('role', 'admin_mekanik')->where('is_active', true)->orderBy('name')->get();
+
+        return view('admin.downtime', compact('breakdowns', 'stats', 'lines', 'mechanics'));
+    }
+
+    /**
+     * Mengirim mekanik (akun admin mekanik) ke line tempat mesin rusak.
+     */
+    public function dispatchMechanic(Request $request, MachineBreakdown $breakdown)
+    {
+        if ($breakdown->isResolved()) {
+            $message = 'Laporan downtime ini sudah selesai.';
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['error' => $message], 422);
+            }
+            return back()->with('error', $message);
+        }
+
+        if ($breakdown->status !== MachineBreakdown::STATUS_REPORTED) {
+            $message = 'Mekanik sudah dikirim untuk laporan downtime ini.';
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['error' => $message], 422);
+            }
+            return back()->with('error', $message);
+        }
+
+        try {
+            $mechanic = User::find($request->input('mechanic_user_id'));
+
+            if (!$mechanic || $mechanic->role !== 'admin_mekanik' || !$mechanic->is_active) {
+                $mechanic = User::where('role', 'admin_mekanik')->where('is_active', true)->orderBy('id')->first();
+            }
+
+            if (!$mechanic) {
+                throw new \RuntimeException('Belum ada akun admin mekanik yang aktif. Buat dulu lewat menu HRD.');
+            }
+
+            $breakdown->load(['machine', 'productionLine']);
+            $breakdown->update([
+                'mechanic_user_id' => $mechanic->id,
+                'mechanic_sent_at' => now(),
+                'status' => MachineBreakdown::STATUS_MECHANIC_SENT,
+            ]);
+
+            $lineName = $breakdown->productionLine->name ?? 'Line';
+
+            Notifier::toUser(
+                $mechanic->id,
+                'penugasan_mekanik',
+                "PENUGASAN MEKANIK - {$lineName}",
+                "Anda ditugaskan menangani mesin {$breakdown->machine->code} yang rusak di {$lineName}.",
+                ['breakdown_id' => $breakdown->id, 'line_id' => $breakdown->production_line_id, 'machine_id' => $breakdown->machine_id]
+            );
+
+            Notifier::toUser(
+                $breakdown->reported_by,
+                'mekanik_dikirim',
+                "MEKANIK DIKIRIM - {$lineName}",
+                "Mekanik ({$mechanic->name}) sedang menuju {$lineName} untuk menangani mesin {$breakdown->machine->code}.",
+                ['breakdown_id' => $breakdown->id]
+            );
+
+            $message = "Mekanik {$mechanic->name} dikirim ke {$lineName}.";
+
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['success' => true, 'message' => $message]);
+            }
+
+            return redirect()->back()->with('success', $message);
+        } catch (\Exception $e) {
+            Log::error('Error dispatching mechanic: ' . $e->getMessage());
+
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['error' => $e->getMessage()], 500);
+            }
+
+            return back()->with('error', $e->getMessage());
+        }
     }
 
     public function validateOutput(Request $request, HourlyOutput $hourlyOutput)

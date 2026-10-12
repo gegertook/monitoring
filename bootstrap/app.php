@@ -20,5 +20,8 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Token CSRF yang kedaluwarsa (misal tab login dibiarkan terbuka lama)
+        // dirender lewat resources/views/errors/419.blade.php — Laravel mengonversi
+        // TokenMismatchException menjadi HttpException 419 sebelum callback render.
         //
     })->create();

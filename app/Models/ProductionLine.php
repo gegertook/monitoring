@@ -48,6 +48,21 @@ class ProductionLine extends Model
         return $this->hasMany(QcDefect::class);
     }
 
+    public function machines()
+    {
+        return $this->hasMany(Machine::class, 'current_line_id');
+    }
+
+    public function breakdowns()
+    {
+        return $this->hasMany(MachineBreakdown::class);
+    }
+
+    public function openBreakdowns()
+    {
+        return $this->hasMany(MachineBreakdown::class)->whereIn('status', \App\Models\MachineBreakdown::OPEN_STATUSES);
+    }
+
     public function scopeActive($query)
     {
         return $query->where('is_active', true);

@@ -17,6 +17,7 @@ class OperatorTask extends Model
         'breakdown_process_id',
         'employee_id',
         'style_order_id',
+        'machine_id',
         'assigned_by',
         'assigned_date',
     ];
@@ -38,6 +39,11 @@ class OperatorTask extends Model
     public function styleOrder()
     {
         return $this->belongsTo(StyleOrder::class);
+    }
+
+    public function machine()
+    {
+        return $this->belongsTo(Machine::class);
     }
 
     public function assignedBy()
